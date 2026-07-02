@@ -1,4 +1,4 @@
-#include <winsock2.h>
+ï»¿#include <winsock2.h>
 #include <ws2tcpip.h>
 #include <iostream>
 #include <thread>
@@ -19,36 +19,68 @@ constexpr int kListenPort = 9000;
 
 void HandleClient(SOCKET ClientSocket)
 {
-	string RawJson;
+    mysql_thread_init();
 
-	while (RecvMessage(ClientSocket, RawJson))
-	{
-		json Request;
+    string RawJson;
 
-		try
-		{
-			Request = json::parse(RawJson);
-		}
+    while (RecvMessage(ClientSocket, RawJson))
+    {
+        json Request;
 
-		catch (const json::parse_error& e)
-		{
-			cerr << "[JSON Parse Error]" << e.what() << endl;
-			continue;
-		}
+        try
+        {
+            Request = json::parse(RawJson);
+        }
 
-		string Type = Request.value("type", "");
+        catch (const json::parse_error& e)
+        {
+            cerr << "[JSON Parse Error]" << e.what() << endl;
+            continue;
+        }
 
-		cout << "[Recv] type=" << Type << endl;
+        string Type = Request.value("type", "");
 
-		json Response;
+        cout << "[Recv] type=" << Type << endl;
+
+        json Response;
 
         if (Type == "LOGIN_REQUEST")
         {
-            Response = { {"type","LOGIN_RESPONSE"}, {"success",false}, {"errorCode",99}, {"errorMessage","DB ¹Ì¿¬µ¿"} };
+            string UserId = Request.value("id", "");
+            string Password = Request.value("password", "");
+
+            string OutNickname;
+            string OutErrorMessage;
+
+            bool bSuccess = GDatabaseManager.LoginUser(UserId, Password, OutNickname, OutErrorMessage);
+
+            if (bSuccess)
+            {
+                Response = { {"type","LOGIN_RESPONSE"}, {"success",true}, {"nickname",OutNickname} };
+            }
+            else
+            {
+                Response = { {"type","LOGIN_RESPONSE"}, {"success",false}, {"errorMessage",OutErrorMessage} };
+            }
         }
         else if (Type == "REGISTER_REQUEST")
         {
-            Response = { {"type","REGISTER_RESPONSE"}, {"success",false}, {"errorCode",99}, {"errorMessage","DB ¹Ì¿¬µ¿"} };
+            string UserId = Request.value("id", "");
+            string Password = Request.value("password", "");
+            string Nickname = Request.value("nickname", "");
+
+            string OutErrorMessage;
+
+            bool bSuccess = GDatabaseManager.RegisterUser(UserId, Password, Nickname, OutErrorMessage);
+
+            if (bSuccess)
+            {
+                Response = { {"type","REGISTER_RESPONSE"}, {"success",true} };
+            }
+            else
+            {
+                Response = { {"type","REGISTER_RESPONSE"}, {"success",false}, {"errorMessage",OutErrorMessage} };
+            }
         }
         else if (Type == "ROOM_LIST_REQUEST")
         {
@@ -56,40 +88,57 @@ void HandleClient(SOCKET ClientSocket)
         }
         else if (Type == "ROOM_CREATE_REQUEST")
         {
-            Response = { {"type","ROOM_CREATE_RESPONSE"}, {"success",false}, {"errorMessage","¹Ì±¸Çö"} };
+            Response = { {"type","ROOM_CREATE_RESPONSE"}, {"success",false}, {"errorMessage","ë¯¸êµ¬í˜„"} };
         }
         else if (Type == "ROOM_JOIN_REQUEST")
         {
-            Response = { {"type","ROOM_JOIN_RESPONSE"}, {"success",false}, {"errorMessage","¹Ì±¸Çö"} };
+            Response = { {"type","ROOM_JOIN_RESPONSE"}, {"success",false}, {"errorMessage","ë¯¸êµ¬í˜„"} };
         }
         else if (Type == "ROOM_CLOSE_NOTIFY")
         {
-            // ÀÀ´ä ºÒÇÊ¿äÇÑ ´Ü¹æÇâ ¾Ë¸² ¡æ Ã³¸®¸¸ ÇÏ°í continue
             continue;
         }
         else
         {
-            Response = { {"type","ERROR_RESPONSE"}, {"errorMessage","¾Ë ¼ö ¾ø´Â ¿äÃ» Å¸ÀÔ"} };
+            Response = { {"type","ERROR_RESPONSE"}, {"errorMessage","ì•Œ ìˆ˜ ì—†ëŠ” ìš”ì²­ íƒ€ìž…"} };
         }
 
-        if (!SendMessage(ClientSocket, Response.dump()))
+        string ResponseJson;
+
+        try
         {
-            std::cerr << "[Send Failed] ¿¬°á Á¾·á" << std::endl;
+            ResponseJson = Response.dump();
+        }
+        catch (const std::exception& e)
+        {
+            cerr << "[JSON Dump Error] " << e.what() << endl;
+            continue;
+        }
+
+        if (!SendMessage(ClientSocket, ResponseJson))
+        {
+            std::cerr << "[Send Failed] ì—°ê²° ì¢…ë£Œ" << std::endl;
             break;
         }
+
+        cout << "[Sent] " << ResponseJson << endl;
     }
     cout << "[Disconnected] socket=" << ClientSocket << endl;
+
+    mysql_thread_end();
 
     closesocket(ClientSocket);
 }
 
 int main()
 {
+    SetConsoleOutputCP(CP_UTF8);
+
     WSADATA wsaData;
 
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
     {
-        cerr << "WSAStartup ½ÇÆÐ" << endl;
+        cerr << "WSAStartup ì‹¤íŒ¨" << endl;
 
         return 1;
     }
@@ -98,7 +147,7 @@ int main()
 
     if (!bDbConnected)
     {
-        std::cerr << "DB ¿¬°á ½ÇÆÐ, ¼­¹ö Á¾·á" << std::endl;
+        std::cerr << "DB ì—°ê²° ì‹¤íŒ¨, ì„œë²„ ì¢…ë£Œ" << std::endl;
 
         return 1;
     }
@@ -107,7 +156,7 @@ int main()
 
     if (ListenSocket == INVALID_SOCKET)
     {
-        cerr << "¼ÒÄÏ »ý¼º ½ÇÆÐ: " << WSAGetLastError() << endl;
+        cerr << "ì†Œì¼“ ìƒì„± ì‹¤íŒ¨: " << WSAGetLastError() << endl;
 
         return 1;
     }
@@ -126,7 +175,7 @@ int main()
 
     if (::bind(ListenSocket, reinterpret_cast<sockaddr*>(&ServerAddr), sizeof(ServerAddr)) == SOCKET_ERROR)
     {
-        cerr << "bind ½ÇÆÐ:" << WSAGetLastError() << endl;
+        cerr << "bind ì‹¤íŒ¨:" << WSAGetLastError() << endl;
 
         closesocket(ListenSocket);
 
@@ -137,7 +186,7 @@ int main()
 
     if (listen(ListenSocket, SOMAXCONN) == SOCKET_ERROR)
     {
-        cerr << "listen ½ÇÆÐ: " << WSAGetLastError() << endl;
+        cerr << "listen ì‹¤íŒ¨: " << WSAGetLastError() << endl;
 
         closesocket(ListenSocket);
 
@@ -146,7 +195,7 @@ int main()
         return 1;
     }
 
-    cout << "[Backend Server] Æ÷Æ®" << kListenPort << " ¿¡¼­ ´ë±â Áß..." << endl;
+    cout << "[Backend Server] í¬íŠ¸" << kListenPort << " ì—ì„œ ëŒ€ê¸° ì¤‘..." << endl;
 
     while (true)
     {
@@ -158,7 +207,7 @@ int main()
 
         if (ClientSocket == INVALID_SOCKET)
         {
-            cerr << "accept ½ÇÆÐ: " << WSAGetLastError() << endl;
+            cerr << "accept ì‹¤íŒ¨: " << WSAGetLastError() << endl;
 
             continue;
         }
