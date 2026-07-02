@@ -3,12 +3,15 @@
 #include <iostream>
 #include <thread>
 #include <nlohmann/json.hpp>
+#include "DatabaseManager.h"
 
 #include "NetworkUtils.h"
 
 #pragma comment(lib, "Ws2_32.lib")
 
 using json = nlohmann::json;
+
+DatabaseManager GDatabaseManager;
 
 using namespace std;
 
@@ -87,6 +90,15 @@ int main()
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
     {
         cerr << "WSAStartup 실패" << endl;
+
+        return 1;
+    }
+
+    bool bDbConnected = GDatabaseManager.Connect("localhost", 3306, "root", "12345678", "eternalreturn_db");
+
+    if (!bDbConnected)
+    {
+        std::cerr << "DB 연결 실패, 서버 종료" << std::endl;
 
         return 1;
     }
