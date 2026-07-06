@@ -61,101 +61,135 @@ void HandleClient(SOCKET ClientSocket, string ClientIP)
 
         json Response;
 
-        // 로그인 처리 (완성됨)
-        if (Type == "LOGIN_REQUEST")
+        // 요청 필드 추출 및 처리 과정에서 발생할 수 있는 타입 불일치 예외를
+        // 전부 여기서 막아서, 특정 요청 하나가 서버 전체를 죽이지 않도록 함
+        try
         {
-            string UserId = Request.value("id", "");
-            string Password = Request.value("password", "");
-
-            string OutNickname;
-            string OutErrorMessage;
-
-            bool bSuccess = GDatabaseManager.LoginUser(UserId, Password, OutNickname, OutErrorMessage);
-
-            if (bSuccess)
+            // 로그인 처리 (완성됨)
+            if (Type == "LOGIN_REQUEST")
             {
-                Response = { {"type","LOGIN_RESPONSE"}, {"success",true}, {"nickname",OutNickname} };
+                string UserId = Request.value("id", "");
+                string Password = Request.value("password", "");
+
+                string OutNickname;
+                string OutErrorMessage;
+
+                bool bSuccess = GDatabaseManager.LoginUser(UserId, Password, OutNickname, OutErrorMessage);
+
+                if (bSuccess)
+                {
+                    Response = { {"type","LOGIN_RESPONSE"}, {"success",true}, {"nickname",OutNickname} };
+                }
+                else
+                {
+                    Response = { {"type","LOGIN_RESPONSE"}, {"success",false}, {"errorMessage",OutErrorMessage} };
+                }
             }
+            // 회원가입 처리 (완성됨)
+            else if (Type == "REGISTER_REQUEST")
+            {
+                string UserId = Request.value("id", "");
+                string Password = Request.value("password", "");
+                string Nickname = Request.value("nickname", "");
+
+                string OutErrorMessage;
+
+                bool bSuccess = GDatabaseManager.RegisterUser(UserId, Password, Nickname, OutErrorMessage);
+
+                if (bSuccess)
+                {
+                    Response = { {"type","REGISTER_RESPONSE"}, {"success",true} };
+                }
+                else
+                {
+                    Response = { {"type","REGISTER_RESPONSE"}, {"success",false}, {"errorMessage",OutErrorMessage} };
+                }
+            }
+            // 방 생성 요청 처리
+            else if (Type == "ROOM_CREATE_REQUEST")
+            {
+                int ListenPort = 0;
+
+                if (Request.contains("listenPort"))
+                {
+                    const json& ListenPortField = Request["listenPort"];
+
+                    if (ListenPortField.is_number())
+                    {
+                        ListenPort = ListenPortField.get<int>();
+                    }
+                    else if (ListenPortField.is_string())
+                    {
+                        try
+                        {
+                            ListenPort = stoi(ListenPortField.get<string>());
+                        }
+                        catch (const std::exception& e)
+                        {
+                            cerr << "[ListenPort Parse Error] " << e.what() << endl;
+
+                            ListenPort = 0;
+                        }
+                    }
+                }
+
+                string RoomCode;
+
+                do
+                {
+                    int RandomNumber = rand() % 1000000;
+
+                    char Buffer[7];
+
+                    snprintf(Buffer, sizeof(Buffer), "%06d", RandomNumber);
+
+                    RoomCode = string(Buffer);
+                } while (GRoomMap.find(RoomCode) != GRoomMap.end());
+
+                GRoomMap[RoomCode] = { ClientIP, ListenPort };
+
+                Response = { {"type","ROOM_CREATE_RESPONSE"}, {"success",true}, {"roomCode",RoomCode} };
+
+                cout << "[Room Created] code=" << RoomCode << " ip=" << ClientIP << " port=" << ListenPort << endl;
+            }
+            // 방 참가 요청 처리
+            else if (Type == "ROOM_JOIN_REQUEST")
+            {
+                string RoomCode = Request.value("roomCode", "");
+
+                auto Found = GRoomMap.find(RoomCode);
+
+                if (Found != GRoomMap.end())
+                {
+                    RoomInfo& Info = Found->second;
+
+                    Response = { {"type","ROOM_JOIN_RESPONSE"}, {"success",true}, {"ip",Info.HostIP}, {"port",Info.HostPort} };
+
+                    cout << "[Room Joined] code= " << RoomCode << " ip =" << Info.HostIP << " port=" << Info.HostPort << endl;
+                }
+
+                else
+                {
+                    Response = { {"type","ROOM_JOIN_RESPONSE"}, {"success",false}, {"errorMessage","존재하지 않는 방입니다"} };
+                }
+
+            }
+            // 방 종료 알림 (현재는 아무 처리 없이 무시)
+            else if (Type == "ROOM_CLOSE_NOTIFY")
+            {
+                continue;
+            }
+            // 정의되지 않은 요청 타입에 대한 에러 응답
             else
             {
-                Response = { {"type","LOGIN_RESPONSE"}, {"success",false}, {"errorMessage",OutErrorMessage} };
+                Response = { {"type","ERROR_RESPONSE"}, {"errorMessage","알 수 없는 요청 타입"} };
             }
         }
-        // 회원가입 처리 (완성됨)
-        else if (Type == "REGISTER_REQUEST")
+        catch (const json::exception& e)
         {
-            string UserId = Request.value("id", "");
-            string Password = Request.value("password", "");
-            string Nickname = Request.value("nickname", "");
+            cerr << "[JSON Field Error] type=" << Type << " what=" << e.what() << endl;
 
-            string OutErrorMessage;
-
-            bool bSuccess = GDatabaseManager.RegisterUser(UserId, Password, Nickname, OutErrorMessage);
-
-            if (bSuccess)
-            {
-                Response = { {"type","REGISTER_RESPONSE"}, {"success",true} };
-            }
-            else
-            {
-                Response = { {"type","REGISTER_RESPONSE"}, {"success",false}, {"errorMessage",OutErrorMessage} };
-            }
-        }
-        // [구현 대상] 방 생성 요청 처리
-        else if (Type == "ROOM_CREATE_REQUEST")
-        {
-            int ListenPort = Request.value("listenPort", 0);
-
-            string RoomCode;
-
-            do
-            {
-                int RandomNumber = rand() % 1000000;
-
-                char Buffer[7];
-
-                snprintf(Buffer, sizeof(Buffer), "%06d", RandomNumber);
-
-                RoomCode = string(Buffer);
-            } while (GRoomMap.find(RoomCode) != GRoomMap.end());
-
-            GRoomMap[RoomCode] = { ClientIP, ListenPort };
-
-            Response = { {"type","ROOM_CREATE_RESPONSE"}, {"success",true}, {"roomCode",RoomCode} };
-
-            cout << "[Room Created] code=" << RoomCode << " ip=" << ClientIP << " port=" << ListenPort << endl;
-        }
-        // [구현 대상] 방 참가 요청 처리
-        else if (Type == "ROOM_JOIN_REQUEST")
-        {
-            string RoomCode = Request.value("roomCode", "");
-
-            auto Found = GRoomMap.find(RoomCode);
-
-            if (Found != GRoomMap.end())
-            {
-                RoomInfo& Info = Found->second;
-
-                Response = { {"type","ROOM_JOIN_RESPONSE"}, {"success",true}, {"ip",Info.HostIP}, {"port",Info.HostPort} };
-
-                cout << "[Room Joined] code= " << RoomCode << " ip =" << Info.HostIP << " port=" << Info.HostPort << endl;
-            }
-
-            else
-            {
-                Response = { {"type","ROOM_JOIN_RESPONSE"}, {"success",false}, {"errorMessage","존재하지 않는 방입니다"} };
-            }
-            
-        }
-        // 방 종료 알림 (현재는 아무 처리 없이 무시)
-        else if (Type == "ROOM_CLOSE_NOTIFY")
-        {
-            continue;
-        }
-        // 정의되지 않은 요청 타입에 대한 에러 응답
-        else
-        {
-            Response = { {"type","ERROR_RESPONSE"}, {"errorMessage","알 수 없는 요청 타입"} };
+            Response = { {"type","ERROR_RESPONSE"}, {"errorMessage","잘못된 요청 형식"} };
         }
 
         string ResponseJson;
