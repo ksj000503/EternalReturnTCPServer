@@ -174,6 +174,10 @@ void HandleClient(SOCKET ClientSocket, string ClientIP)
                 }
 
             }
+            else if (Type == "CHAT_LOG_REQUEST")
+            {
+                Response = { {} };
+               }
             // 방 종료 알림 (현재는 아무 처리 없이 무시)
             else if (Type == "ROOM_CLOSE_NOTIFY")
             {
