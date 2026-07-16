@@ -174,10 +174,15 @@ void HandleClient(SOCKET ClientSocket, string ClientIP)
                 }
 
             }
-            else if (Type == "CHAT_LOG_REQUEST")
+            else if (Type == "CHAT_SEND_REQUEST")
             {
-                Response = { {} };
-               }
+                // 이 부분에 자신을 제외하고 자신과 방코드가 같은 곳에 있는 유저들에게 채팅을 보내주는 기능을 추가하고 싶은데
+                // 자동으로 방 코드를 받아서 채팅내용을 변수에 담아서 방코드가 같고 내가 아닌 사람들에게 내용을 Response로 보낸다 이게 맞나
+               
+                //auto Room = GRoomMap.find(Request.value)
+                
+                //Response = { {"type", "CHAT_SEND_RESPONSE"}, {"success", true}, {};
+            }
             // 방 종료 알림 (현재는 아무 처리 없이 무시)
             else if (Type == "ROOM_CLOSE_NOTIFY")
             {
