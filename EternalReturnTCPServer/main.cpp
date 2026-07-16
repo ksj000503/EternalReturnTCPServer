@@ -2,6 +2,7 @@
 #include <ws2tcpip.h>
 #include <iostream>
 #include <thread>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include "DatabaseManager.h"
 
@@ -27,8 +28,21 @@ struct RoomInfo
     int HostPort;
 };
 
+struct ClientInfo
+{
+    SOCKET Socket;
+
+    string Nickname;
+
+    string RoomCode;
+};
+
 // 방을 담을 map
 unordered_map<string, RoomInfo> GRoomMap;
+
+unordered_map<SOCKET, ClientInfo> GClients;
+
+mutex GRoomMutex;
 
 // 클라이언트 1명당 별도 스레드로 실행되는 메인 처리 루프
 void HandleClient(SOCKET ClientSocket, string ClientIP)
@@ -330,6 +344,13 @@ int main()
         inet_ntop(AF_INET, &ClientAddr.sin_addr, ClientIP, INET_ADDRSTRLEN);
 
         cout << "[Connected] " << ClientIP << endl;
+
+        GClients[ClientSocket] =
+        {
+            ClientSocket,
+            "",
+            ""
+        };
 
         // 클라이언트마다 별도 스레드에서 HandleClient 실행
         thread(HandleClient, ClientSocket, string(ClientIP)).detach();
